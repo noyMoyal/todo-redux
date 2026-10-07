@@ -3,70 +3,85 @@ import { TodoList } from "../cmps/TodoList.jsx"
 import { DataTable } from "../cmps/data-table/DataTable.jsx"
 import { todoService } from "../services/todo.service.js"
 import { showErrorMsg, showSuccessMsg } from "../services/event-bus.service.js"
+import { SET_TODOS, REMOVE_TODO, UPDATE_TODO, SET_IS_LOADING } from "../store/store.js"
 
 const { useState, useEffect } = React
 const { Link, useSearchParams } = ReactRouterDOM
+const { useSelector, useDispatch } = ReactRedux
 
 export function TodoIndex() {
+  const todos = useSelector((storeState) => storeState.todos)
+  const isLoading = useSelector((storeState) => storeState.isLoading)
+  const dispatch = useDispatch()
+  // Special hook for accessing search-params:
+  const [searchParams, setSearchParams] = useSearchParams()
 
-    const [todos, setTodos] = useState(null)
+  const defaultFilter = todoService.getFilterFromSearchParams(searchParams)
 
-    // Special hook for accessing search-params:
-    const [searchParams, setSearchParams] = useSearchParams()
+  const [filterBy, setFilterBy] = useState(defaultFilter)
 
-    const defaultFilter = todoService.getFilterFromSearchParams(searchParams)
+  useEffect(() => {
+    setSearchParams(filterBy)
+    dispatch({ type: SET_IS_LOADING, isLoading: true })
+    todoService
+      .query(filterBy)
+      .then((todos) => dispatch({ type: SET_TODOS, todos }))
+      .catch((err) => {
+        console.error("err:", err)
+        showErrorMsg("Cannot load todos")
+      })
+      .finally(() => dispatch({ type: SET_IS_LOADING, isLoading: false }))
+  }, [filterBy])
 
-    const [filterBy, setFilterBy] = useState(defaultFilter)
+  function onRemoveTodo(todoId) {
+    todoService
+      .remove(todoId)
+      .then(() => {
+        dispatch({ type: REMOVE_TODO, todoId })
+        showSuccessMsg(`Todo removed`)
+      })
+      .catch((err) => {
+        console.log("err:", err)
+        showErrorMsg("Cannot remove todo " + todoId)
+      })
+  }
 
-    useEffect(() => {
-        setSearchParams(filterBy)
-        todoService.query(filterBy)
-            .then(todos => setTodos(todos))
-            .catch(err => {
-                console.eror('err:', err)
-                showErrorMsg('Cannot load todos')
-            })
-    }, [filterBy])
+  function onToggleTodo(todo) {
+    const todoToSave = { ...todo, isDone: !todo.isDone }
+    todoService
+      .save(todoToSave)
+      .then((savedTodo) => {
+        dispatch({ type: UPDATE_TODO, todo: savedTodo })
+        showSuccessMsg(
+          `Todo is ${savedTodo.isDone ? "done" : "back on your list"}`,
+        )
+      })
+      .catch((err) => {
+        console.log("err:", err)
+        showErrorMsg("Cannot toggle todo " + todoId)
+      })
+  }
 
-    function onRemoveTodo(todoId) {
-        todoService.remove(todoId)
-            .then(() => {
-                setTodos(prevTodos => prevTodos.filter(todo => todo._id !== todoId))
-                showSuccessMsg(`Todo removed`)
-            })
-            .catch(err => {
-                console.log('err:', err)
-                showErrorMsg('Cannot remove todo ' + todoId)
-            })
-    }
-
-    function onToggleTodo(todo) {
-        const todoToSave = { ...todo, isDone: !todo.isDone }
-        todoService.save(todoToSave)
-            .then((savedTodo) => {
-                setTodos(prevTodos => prevTodos.map(currTodo => (currTodo._id !== todo._id) ? currTodo : { ...savedTodo }))
-                showSuccessMsg(`Todo is ${(savedTodo.isDone)? 'done' : 'back on your list'}`)
-            })
-            .catch(err => {
-                console.log('err:', err)
-                showErrorMsg('Cannot toggle todo ' + todoId)
-            })
-    }
-
-    if (!todos) return <div>Loading...</div>
-    return (
-        <section className="todo-index">
-            <TodoFilter filterBy={filterBy} onSetFilterBy={setFilterBy} />
-            <div>
-                <Link to="/todo/edit" className="btn" >Add Todo</Link>
-            </div>
-            <h2>Todos List</h2>
-            <TodoList todos={todos} onRemoveTodo={onRemoveTodo} onToggleTodo={onToggleTodo} />
-            <hr />
-            <h2>Todos Table</h2>
-            <div style={{ width: '60%', margin: 'auto' }}>
-                <DataTable todos={todos} onRemoveTodo={onRemoveTodo} />
-            </div>
-        </section>
-    )
+    
+  return (
+    <section className="todo-index">
+      <TodoFilter filterBy={filterBy} onSetFilterBy={setFilterBy} />
+      <div>
+        <Link to="/todo/edit" className="btn">
+          Add Todo
+        </Link>
+      </div>
+      <h2>Todos List</h2>
+            {isLoading ? (
+        <div>Loading...</div>
+      ) : (
+        <TodoList todos={todos} onRemoveTodo={onRemoveTodo} onToggleTodo={onToggleTodo} />
+      )}
+      <hr />
+      <h2>Todos Table</h2>
+      <div style={{ width: "60%", margin: "auto" }}>
+        <DataTable todos={todos} onRemoveTodo={onRemoveTodo} />
+      </div>
+    </section>
+  )
 }
